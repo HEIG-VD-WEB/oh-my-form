@@ -1,0 +1,70 @@
+version: "3"
+services:
+  ohmyform:
+    env_file:
+      - .env
+    image: ohmyform/ohmyform
+    volumes:
+      - "./sqlite-data:/data"
+    environment:
+      CREATE_ADMIN: "TRUE"
+      ADMIN_EMAIL: ${OH_MY_FORM_ADMIN_EMAIL}
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: ${OH_MY_FORM_ADMIN_PASSWORD}
+      DATABASE_DRIVER: sqlite
+      DATABASE_URL: "sqlite:///data/data.sqlite"
+      LOGIN_NOTE: "Either login with admin:admin or create your own account to test OhMyForm"
+    ports:
+      - "8080:3000"
+    restart: unless-stopped
+
+    labels:
+      #Traefik
+      - "traefik.enable=true"
+      # Middlewares
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true
+      # HTTP
+      - traefik.http.routers.ohmyform-http.rule=Host(`${OH_MY_FORM_FQDN}`)
+      - traefik.http.routers.ohmyform-http.entrypoints=http
+      - traefik.http.routers.ohmyform-http.middlewares=redirect-to-https
+      - traefik.http.routers.ohmyform-http.service=ohmyform
+      # HTTPS
+      - traefik.http.routers.ohmyform-https.rule=Host(`${OH_MY_FORM_FQDN}`)
+      - traefik.http.routers.ohmyform-https.entrypoints=websecure
+      - traefik.http.routers.ohmyform-https.tls=true
+      - traefik.http.routers.ohmyform-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.ohmyform-https.service=ohmyform
+      # Service
+      - traefik.http.services.ohmyform.loadbalancer.server.port=8080
+
+  traefik:
+    image: traefik:${TRAEFIK_IMAGE_VERSION:-latest}
+    command:
+      # Global
+      - --log.level=ERROR
+      - --api=true
+      # Docker
+      - --providers.docker=true
+      - --providers.docker.watch=true
+      - --providers.docker.exposedByDefault=false
+      # Entrypoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Certificates
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=contact@artios.ch
+      - --certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme.json
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./acme.json:/etc/traefik/acme.json
+    labels:
+      # Traefik
+      - traefik.enable=true
+      # Middlewares
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true
